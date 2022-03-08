@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -24,14 +25,21 @@ func SetupRoutes(apiBasePath string) {
 func productsHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		productsJson, err := json.Marshal(ProductList)
+		productList := getProductList()
+		productsJson, err := json.Marshal(productList)
 
 		if err != nil {
+			log.Fatal(err)
 			w.WriteHeader(http.StatusInternalServerError)
-			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(productsJson)
+
+		_, err = w.Write(productsJson)
+
+		if err != nil {
+			log.Fatal(err)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
 
 	case http.MethodPost:
 		var newProduct Product
@@ -52,8 +60,12 @@ func productsHandler(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		newProduct.ProductID = GetNextId()
-		ProductList = append(ProductList, newProduct)
+		_, err = addOrUpdateProduct(newProduct)
+		if err != nil {
+			log.Println(err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 		w.WriteHeader(http.StatusCreated)
 		return
 	}
@@ -68,7 +80,7 @@ func productHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	foundProduct, listItemIndex := FindProductById(productID)
+	foundProduct := getProduct(productID)
 	if foundProduct == nil {
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte("Not found"))
@@ -86,7 +98,7 @@ func productHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	case http.MethodPut:
 		//  update the product in the list
-		var updateProduct Product
+		var updatedProduct Product
 		bodyBytes, err := ioutil.ReadAll(r.Body)
 
 		if err != nil {
@@ -95,7 +107,7 @@ func productHandler(w http.ResponseWriter, r *http.Request) {
 
 			return
 		}
-		err = json.Unmarshal(bodyBytes, &updateProduct)
+		err = json.Unmarshal(bodyBytes, &updatedProduct)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			w.Write([]byte("Poorly formated Json"))
@@ -107,22 +119,12 @@ func productHandler(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte("Product with Specified Id does not exist"))
 			return
 		}
-		updateProduct.ProductID = productID
-		foundProduct = &updateProduct
-		ProductList[listItemIndex] = *foundProduct
+		addOrUpdateProduct(updatedProduct)
 		w.WriteHeader(http.StatusOK)
 		return
 	case http.MethodDelete:
-		size := len(ProductList)
-
-		if listItemIndex == size-1 {
-			ProductList = ProductList[:listItemIndex]
-		} else {
-			ProductList = append(ProductList[:listItemIndex], ProductList[listItemIndex+1:]...)
-
-		}
+		removeProduct(productID)
 		w.WriteHeader(http.StatusNoContent)
-
 		return
 	case http.MethodOptions:
 		return

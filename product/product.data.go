@@ -2,55 +2,129 @@ package product
 
 import (
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"log"
+	"os"
+	"sort"
+	"sync"
 )
 
-var ProductList []Product
+var productMap = struct {
+	sync.RWMutex
+	items map[int]Product
+}{items: make(map[int]Product)}
 
 func init() {
-	productsJSON := `
-	[
-		{
-			"productId": 1,
-			"manufacturer": "Johns-Jenkins",
-			"sku": "p5z343vdS",
-			"upc": "939581000000",
-			"pricePerUnit": "497.45",
-			"quantityOnHand": 9703,
-			"productName": "sticky note"
-		  },
-		  {
-			"productId": 2,
-			"manufacturer": "Hessel, Schimmel and Feeney",
-			"sku": "i7v300kmx",
-			"upc": "740979000000",
-			"pricePerUnit": "282.29",
-			"quantityOnHand": 9217,
-			"productName": "leg warmers"
-		  }
-	]`
-	err := json.Unmarshal([]byte(productsJSON), &ProductList)
+	fmt.Println("loading products....")
+	prodMap, err := loadProductMap()
+	productMap.items = prodMap
 	if err != nil {
 		log.Fatal(err)
 	}
+	fmt.Printf("%d products loaded....\n", len(productMap.items))
 }
 
-func GetNextId() int {
-	highestID := -1
+func loadProductMap() (map[int]Product, error) {
+	filename := "products.json"
 
-	for _, product := range ProductList {
-		if highestID < product.ProductID {
-			highestID = product.ProductID
-		}
+	// check if file exists
+	_, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return nil, fmt.Errorf("file [%s] does not exist", filename)
 	}
-	return highestID + 1
+
+	file, _ := ioutil.ReadFile(filename)
+	ProductList := make([]Product, 0)
+
+	err = json.Unmarshal([]byte(file), &ProductList)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	prodMap := make(map[int]Product)
+
+	for i := 0; i < len(ProductList); i++ {
+		prodMap[ProductList[i].ProductID] = ProductList[i]
+	}
+	return prodMap, nil
 }
 
-func FindProductById(productID int) (*Product, int) {
-	for i, product := range ProductList {
-		if product.ProductID == productID {
-			return &product, i
-		}
+// Returns a product with specified id from the Product Map
+func getProduct(productID int) *Product {
+
+	productMap.RLock()         // prevents another thread from getting a write lock on the struct while we read it
+	defer productMap.RUnlock() // release lock from mutex
+	if product, ok := productMap.items[productID]; ok {
+		return &product
 	}
-	return nil, 0
+	return nil
+}
+
+func removeProduct(productID int) {
+	productMap.Lock()
+	defer productMap.Unlock()
+	delete(productMap.items, productID)
+}
+
+func getProductList() []Product {
+	productMap.RLock()
+	products := make([]Product, 0, len(productMap.items))
+	for _, value := range productMap.items {
+		products = append(products, value)
+	}
+	productMap.RUnlock()
+	return products
+}
+
+/**
+This method extracts product ids from the product map keys
+@return list of product ids sorted in ascending order
+**/
+func getProductIds() []int {
+	productMap.RLock()
+	productIds := []int{}
+	for key := range productMap.items {
+		productIds = append(productIds, key)
+	}
+	productMap.RUnlock()
+	sort.Ints(productIds)
+	return productIds
+}
+
+/**
+This method returns the next ID for a new product
+**/
+func getNextProductID() int {
+	productIDs := getProductIds()
+	size := len(productIDs)
+	if size == 0 {
+		return 1
+	} else {
+		return size
+	}
+}
+
+// Create a new product if it does not already exist has an Id of Zero.
+// Updates the product if it already exists
+func addOrUpdateProduct(product Product) (int, error) {
+	// if the product is set, update otherwise add
+	addOrUpdateID := -1
+	if product.ProductID > 0 {
+		oldProduct := getProduct(product.ProductID)
+		// if it does not exist, return error
+		if oldProduct == nil {
+			return 0, fmt.Errorf("Product id [%d] does not exist", product.ProductID)
+		}
+		// Otherwise replace it
+		addOrUpdateID = product.ProductID
+	} else {
+		addOrUpdateID = getNextProductID()
+		product.ProductID = addOrUpdateID
+	}
+
+	productMap.Lock()
+	productMap.items[addOrUpdateID] = product
+	productMap.Unlock()
+	return addOrUpdateID, nil
 }
