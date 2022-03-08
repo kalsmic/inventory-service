@@ -2,13 +2,26 @@ package product
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/kalsmic/inventory-service/cors"
 )
 
-func ProductsHandler(w http.ResponseWriter, r *http.Request) {
+const productsBasePath = "products"
+
+func SetupRoutes(apiBasePath string) {
+	handleProducts := http.HandlerFunc(productsHandler)
+	handleProduct := http.HandlerFunc(productHandler)
+	http.Handle(fmt.Sprintf("%s/%s", apiBasePath, productsBasePath), cors.Middleware(handleProducts))
+	http.Handle(fmt.Sprintf("%s/%s/", apiBasePath, productsBasePath), cors.Middleware(handleProduct))
+
+}
+
+func productsHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		productsJson, err := json.Marshal(ProductList)
@@ -46,7 +59,7 @@ func ProductsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func ProductHandler(w http.ResponseWriter, r *http.Request) {
+func productHandler(w http.ResponseWriter, r *http.Request) {
 
 	urlPathSegments := strings.Split(r.URL.Path, "products/")
 	productID, err := strconv.Atoi(urlPathSegments[len(urlPathSegments)-1])
@@ -110,6 +123,8 @@ func ProductHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 
+		return
+	case http.MethodOptions:
 		return
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
