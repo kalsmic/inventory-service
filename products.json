@@ -1,0 +1,20 @@
+[
+    {
+        "productId": 1,
+        "manufacturer": "Johns-Jenkins",
+        "sku": "p5z343vdS",
+        "upc": "939581000000",
+        "pricePerUnit": "497.45",
+        "quantityOnHand": 9703,
+        "productName": "sticky note"
+      },
+      {
+        "productId": 2,
+        "manufacturer": "Hessel, Schimmel and Feeney",
+        "sku": "i7v300kmx",
+        "upc": "740979000000",
+        "pricePerUnit": "282.29",
+        "quantityOnHand": 9217,
+        "productName": "leg warmers"
+      }
+]
